@@ -12,6 +12,7 @@ const {
   createMediaAttachmentCacheMock,
   normalizeMediaAttachmentsMock,
   runCapabilityMock,
+  textToSpeechMock,
 } = vi.hoisted(() => {
   type EventHandler = (...args: unknown[]) => unknown;
   type MockConnection = {
@@ -76,6 +77,12 @@ const {
     runCapabilityMock: vi.fn(async () => ({
       outputs: [{ kind: "audio.transcription", text: "hello from voice" }],
     })),
+    textToSpeechMock: vi.fn(async (_params?: unknown) => ({
+      success: true,
+      audioPath: "/tmp/test.mp3",
+      voiceCompatible: false,
+      provider: "inworld",
+    })),
   };
 });
 
@@ -109,6 +116,14 @@ vi.mock("../../media-understanding/runner.js", () => ({
   normalizeMediaAttachments: normalizeMediaAttachmentsMock,
   runCapability: runCapabilityMock,
 }));
+
+vi.mock("../../tts/tts.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../tts/tts.js")>();
+  return {
+    ...actual,
+    textToSpeech: (params: unknown) => textToSpeechMock(params),
+  };
+});
 
 let managerModule: typeof import("./manager.js");
 
@@ -157,6 +172,13 @@ describe("DiscordVoiceManager", () => {
     runCapabilityMock.mockReset();
     runCapabilityMock.mockResolvedValue({
       outputs: [{ kind: "audio.transcription", text: "hello from voice" }],
+    });
+    textToSpeechMock.mockClear();
+    textToSpeechMock.mockResolvedValue({
+      success: true,
+      audioPath: "/tmp/test.mp3",
+      voiceCompatible: false,
+      provider: "inworld",
     });
   });
 
@@ -217,6 +239,8 @@ describe("DiscordVoiceManager", () => {
         guildId: "g1",
         channelId: "c1",
         route: { sessionKey: "discord:g1:c1", agentId: "agent-1" },
+        playbackQueue: Promise.resolve(),
+        player: createAudioPlayerMock(),
       },
       wavPath: "/tmp/test.wav",
       userId,
@@ -368,5 +392,43 @@ describe("DiscordVoiceManager", () => {
     await runSegment();
 
     expect(client.fetchMember).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies Discord voice.tts InWorld overrides to synthesized playback", async () => {
+    agentCommandMock.mockResolvedValue({
+      payloads: [{ text: "Voice reply" }],
+    });
+
+    const manager = createManager({
+      voice: {
+        enabled: true,
+        tts: {
+          provider: "inworld",
+          inworld: {
+            voiceId: "Sarah",
+            modelId: "inworld-tts-1.5-max",
+          },
+        },
+      },
+    });
+
+    await processVoiceSegment(manager, "u-guest");
+
+    const call = textToSpeechMock.mock.calls.at(-1)?.[0] as
+      | {
+          cfg?: {
+            messages?: {
+              tts?: {
+                provider?: string;
+                inworld?: { voiceId?: string; modelId?: string };
+              };
+            };
+          };
+        }
+      | undefined;
+
+    expect(call?.cfg?.messages?.tts?.provider).toBe("inworld");
+    expect(call?.cfg?.messages?.tts?.inworld?.voiceId).toBe("Sarah");
+    expect(call?.cfg?.messages?.tts?.inworld?.modelId).toBe("inworld-tts-1.5-max");
   });
 });
