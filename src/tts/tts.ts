@@ -32,6 +32,9 @@ import {
   edgeTTS,
   elevenLabsTTS,
   inferEdgeExtension,
+  INWORLD_TTS_MODELS,
+  INWORLD_TTS_VOICES,
+  inworldTTS,
   isValidOpenAIModel,
   isValidOpenAIVoice,
   isValidVoiceId,
@@ -43,7 +46,7 @@ import {
   scheduleCleanup,
   summarizeText,
 } from "./tts-core.js";
-export { OPENAI_TTS_MODELS, OPENAI_TTS_VOICES } from "./tts-core.js";
+export { OPENAI_TTS_MODELS, OPENAI_TTS_VOICES, INWORLD_TTS_MODELS, INWORLD_TTS_VOICES } from "./tts-core.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_TTS_MAX_LENGTH = 1500;
@@ -55,6 +58,9 @@ const DEFAULT_ELEVENLABS_VOICE_ID = "pMsXgVXv3BLzUgSXRplE";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_multilingual_v2";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini-tts";
 const DEFAULT_OPENAI_VOICE = "alloy";
+const DEFAULT_INWORLD_BASE_URL = "https://api.inworld.ai";
+const DEFAULT_INWORLD_VOICE_ID = "Dennis";
+const DEFAULT_INWORLD_MODEL_ID = "inworld-tts-1.5-max";
 const DEFAULT_EDGE_VOICE = "en-US-MichelleNeural";
 const DEFAULT_EDGE_LANG = "en-US";
 const DEFAULT_EDGE_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
@@ -86,6 +92,7 @@ const DEFAULT_OUTPUT = {
 const TELEPHONY_OUTPUT = {
   openai: { format: "pcm" as const, sampleRate: 24000 },
   elevenlabs: { format: "pcm_22050", sampleRate: 22050 },
+  inworld: { format: "LINEAR16" as const, sampleRate: 48000 },
 };
 
 const TTS_AUTO_MODES = new Set<TtsAutoMode>(["off", "always", "inbound", "tagged"]);
@@ -120,6 +127,12 @@ export type ResolvedTtsConfig = {
     voice: string;
     speed?: number;
     instructions?: string;
+  };
+  inworld: {
+    apiKey?: string;
+    baseUrl: string;
+    voiceId: string;
+    modelId: string;
   };
   edge: {
     enabled: boolean;
@@ -310,6 +323,17 @@ export function resolveTtsConfig(cfg: OpenClawConfig): ResolvedTtsConfig {
       speed: raw.openai?.speed,
       instructions: raw.openai?.instructions?.trim() || undefined,
     },
+    inworld: {
+      apiKey: normalizeResolvedSecretInputString({
+        value: raw.inworld?.apiKey,
+        path: "messages.tts.inworld.apiKey",
+      }),
+      baseUrl: (
+        raw.inworld?.baseUrl?.trim() || process.env.INWORLD_API_BASE_URL?.trim() || DEFAULT_INWORLD_BASE_URL
+      ).replace(/\/+$/, ""),
+      voiceId: raw.inworld?.voiceId?.trim() || DEFAULT_INWORLD_VOICE_ID,
+      modelId: raw.inworld?.modelId?.trim() || DEFAULT_INWORLD_MODEL_ID,
+    },
     edge: {
       enabled: raw.edge?.enabled ?? true,
       voice: raw.edge?.voice?.trim() || DEFAULT_EDGE_VOICE,
@@ -461,6 +485,9 @@ export function getTtsProvider(config: ResolvedTtsConfig, prefsPath: string): Tt
   if (resolveTtsApiKey(config, "elevenlabs")) {
     return "elevenlabs";
   }
+  if (resolveTtsApiKey(config, "inworld")) {
+    return "inworld";
+  }
   return "edge";
 }
 
@@ -528,10 +555,13 @@ export function resolveTtsApiKey(
   if (provider === "openai") {
     return config.openai.apiKey || process.env.OPENAI_API_KEY;
   }
+  if (provider === "inworld") {
+    return config.inworld.apiKey || process.env.INWORLD_API_KEY;
+  }
   return undefined;
 }
 
-export const TTS_PROVIDERS = ["openai", "elevenlabs", "edge"] as const;
+export const TTS_PROVIDERS = ["openai", "elevenlabs", "inworld", "edge"] as const;
 
 export function resolveTtsProviderOrder(primary: TtsProvider): TtsProvider[] {
   return [primary, ...TTS_PROVIDERS.filter((provider) => provider !== primary)];
@@ -541,6 +571,7 @@ export function isTtsProviderConfigured(config: ResolvedTtsConfig, provider: Tts
   if (provider === "edge") {
     return config.edge.enabled;
   }
+  // All other providers (openai, elevenlabs, inworld) require an API key.
   return Boolean(resolveTtsApiKey(config, provider));
 }
 
@@ -714,6 +745,16 @@ export async function textToSpeech(params: {
           voiceSettings,
           timeoutMs: config.timeoutMs,
         });
+      } else if (provider === "inworld") {
+        audioBuffer = await inworldTTS({
+          text: params.text,
+          apiKey,
+          baseUrl: config.inworld.baseUrl,
+          voiceId: config.inworld.voiceId,
+          modelId: config.inworld.modelId,
+          audioEncoding: "MP3",
+          timeoutMs: config.timeoutMs,
+        });
       } else {
         const openaiModelOverride = params.overrides?.openai?.model;
         const openaiVoiceOverride = params.overrides?.openai?.voice;
@@ -744,7 +785,8 @@ export async function textToSpeech(params: {
         audioPath,
         latencyMs,
         provider,
-        outputFormat: provider === "openai" ? output.openai : output.elevenlabs,
+        outputFormat:
+          provider === "openai" ? output.openai : provider === "inworld" ? "mp3" : output.elevenlabs,
         voiceCompatible: output.voiceCompatible,
       };
     } catch (err) {
@@ -800,6 +842,28 @@ export async function textToSpeechTelephony(params: {
           applyTextNormalization: config.elevenlabs.applyTextNormalization,
           languageCode: config.elevenlabs.languageCode,
           voiceSettings: config.elevenlabs.voiceSettings,
+          timeoutMs: config.timeoutMs,
+        });
+
+        return {
+          success: true,
+          audioBuffer,
+          latencyMs: Date.now() - providerStart,
+          provider,
+          outputFormat: output.format,
+          sampleRate: output.sampleRate,
+        };
+      }
+
+      if (provider === "inworld") {
+        const output = TELEPHONY_OUTPUT.inworld;
+        const audioBuffer = await inworldTTS({
+          text: params.text,
+          apiKey,
+          baseUrl: config.inworld.baseUrl,
+          voiceId: config.inworld.voiceId,
+          modelId: config.inworld.modelId,
+          audioEncoding: "LINEAR16",
           timeoutMs: config.timeoutMs,
         });
 

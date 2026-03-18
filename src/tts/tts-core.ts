@@ -679,6 +679,94 @@ export async function openaiTTS(params: {
   }
 }
 
+// -- InWorld AI TTS ----------------------------------------------------------
+
+const DEFAULT_INWORLD_BASE_URL = "https://api.inworld.ai";
+
+export const INWORLD_TTS_MODELS = ["inworld-tts-1.5-max", "inworld-tts-1.5-mini"] as const;
+
+export const INWORLD_TTS_VOICES = [
+  "Alex",
+  "Ashley",
+  "Craig",
+  "Deborah",
+  "Dennis",
+  "Dominus",
+  "Edward",
+  "Elizabeth",
+  "Hades",
+  "Heitor",
+  "Julia",
+  "Mark",
+  "Olivia",
+  "Pixie",
+  "Priya",
+  "Ronald",
+  "Sarah",
+  "Shaun",
+  "Theodore",
+  "Timothy",
+  "Wendy",
+] as const;
+
+function normalizeInworldBaseUrl(baseUrl?: string): string {
+  const trimmed = baseUrl?.trim();
+  if (!trimmed) {
+    return DEFAULT_INWORLD_BASE_URL;
+  }
+  return trimmed.replace(/\/+$/, "");
+}
+
+export async function inworldTTS(params: {
+  text: string;
+  apiKey: string;
+  baseUrl?: string;
+  voiceId: string;
+  modelId: string;
+  audioEncoding: "MP3" | "LINEAR16";
+  timeoutMs: number;
+}): Promise<Buffer> {
+  const { text, apiKey, baseUrl, voiceId, modelId, audioEncoding, timeoutMs } = params;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const url = `${normalizeInworldBaseUrl(baseUrl)}/tts/v1/voice`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text,
+        voice_id: voiceId,
+        model_id: modelId,
+        audio_config: {
+          audio_encoding: audioEncoding,
+          sample_rate_hertz: 48000,
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      throw new Error(`InWorld TTS API error (${response.status})${errorBody ? `: ${errorBody}` : ""}`);
+    }
+
+    // InWorld returns JSON with base64-encoded audioContent.
+    const result = (await response.json()) as { audioContent?: string };
+    if (!result.audioContent) {
+      throw new Error("InWorld TTS: no audioContent in response");
+    }
+    return Buffer.from(result.audioContent, "base64");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export function inferEdgeExtension(outputFormat: string): string {
   const normalized = outputFormat.toLowerCase();
   if (normalized.includes("webm")) {
