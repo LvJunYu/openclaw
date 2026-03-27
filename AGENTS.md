@@ -4,6 +4,19 @@
 - In chat replies, file references must be repo-root relative only (example: `extensions/bluebubbles/src/channel.ts:80`); never absolute paths or `~/...`.
 - Do not edit files covered by security-focused `CODEOWNERS` rules unless a listed owner explicitly asked for the change or is already reviewing it with you. Treat those paths as restricted surfaces, not drive-by cleanup.
 
+## Local Fork Principle
+
+- This local OpenClaw repo exists to build features we actually need, but it still needs to rebase and merge cleanly onto newer upstream releases later.
+- Prefer the least-coupled solution that solves the real need, so local changes stay easier to carry forward and produce fewer upstream merge conflicts.
+- If deeper integration is truly necessary, do it, but keep that tradeoff explicit instead of defaulting to the most intertwined design.
+- For this fork, `local/junyu` is the local integration branch where we merge/rebase new features. When creating PRs in this fork, target `local/junyu` by default, not `main`, unless explicitly told otherwise.
+- To build `local/junyu` use Git Bash with an explicit PATH for Node/npm tools:
+
+```powershell
+$gitBash = "C:\Program Files\Git\bin\bash.exe"
+& $gitBash -c "export PATH='/c/Program Files/nodejs:/c/Users/fengy/AppData/Roaming/npm:/c/Program Files/Git/usr/bin:$PATH'; cd /d/Workspace/AI/openclaw && pnpm install --ignore-scripts && pnpm build"
+```
+
 ## Project Structure & Module Organization
 
 - Source code: `src/` (CLI wiring in `src/cli`, commands in `src/commands`, web provider in `src/provider-web.ts`, infra in `src/infra`, media pipeline in `src/media`).
