@@ -58,7 +58,12 @@ describe("speech provider registry", () => {
 
     const providers = listSpeechProviders();
 
-    expect(providers.map((provider) => provider.id)).toEqual(["openai", "elevenlabs", "microsoft"]);
+    expect(providers.map((provider) => provider.id)).toEqual([
+      "openai",
+      "elevenlabs",
+      "inworld",
+      "microsoft",
+    ]);
     expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
   });
 
@@ -79,6 +84,7 @@ describe("speech provider registry", () => {
     expect(listSpeechProviders(cfg).map((provider) => provider.id)).toEqual([
       "openai",
       "elevenlabs",
+      "inworld",
       "microsoft",
     ]);
     expect(getSpeechProvider("edge", cfg)?.id).toBe("microsoft");
@@ -89,6 +95,7 @@ describe("speech provider registry", () => {
     expect(listSpeechProviders().map((provider) => provider.id)).toEqual([
       "openai",
       "elevenlabs",
+      "inworld",
       "microsoft",
     ]);
     expect(getSpeechProvider("openai")?.id).toBe("openai");

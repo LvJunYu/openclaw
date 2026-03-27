@@ -392,6 +392,8 @@ importers:
 
   extensions/imessage: {}
 
+  extensions/inworld: {}
+
   extensions/irc:
     dependencies:
       zod:

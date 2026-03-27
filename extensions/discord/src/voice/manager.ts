@@ -91,6 +91,10 @@ function mergeTtsConfig(base: TtsConfig, override?: TtsConfig): TtsConfig {
       ...base.openai,
       ...override.openai,
     },
+    inworld: {
+      ...base.inworld,
+      ...override.inworld,
+    },
     edge: {
       ...base.edge,
       ...override.edge,

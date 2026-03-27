@@ -1,0 +1,8 @@
+{
+  "id": "inworld",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

@@ -43,6 +43,7 @@ export const ttsHandlers: GatewayRequestHandlers = {
         prefsPath,
         hasOpenAIKey: Boolean(resolveTtsApiKey(config, "openai")),
         hasElevenLabsKey: Boolean(resolveTtsApiKey(config, "elevenlabs")),
+        hasInworldKey: Boolean(resolveTtsApiKey(config, "inworld")),
         microsoftEnabled: isTtsProviderConfigured(config, "microsoft", cfg),
       });
     } catch (err) {

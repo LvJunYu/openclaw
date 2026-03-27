@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildElevenLabsSpeechProvider } from "../../extensions/elevenlabs/speech-provider.ts";
+import { buildInWorldSpeechProvider } from "../../extensions/inworld/speech-provider.ts";
 import { buildMicrosoftSpeechProvider } from "../../extensions/microsoft/speech-provider.ts";
 import { buildOpenAISpeechProvider } from "../../extensions/openai/speech-provider.ts";
 import type { OpenClawConfig } from "../config/config.js";
@@ -126,14 +127,48 @@ function createOpenAiTelephonyCfg(model: "tts-1" | "gpt-4o-mini-tts"): OpenClawC
   };
 }
 
+function createInworldCfg(params?: { includeOpenAIFallback?: boolean }): OpenClawConfig {
+  return {
+    agents: { defaults: { model: { primary: "openai/gpt-4o-mini" } } },
+    messages: {
+      tts: {
+        provider: "inworld",
+        inworld: {
+          apiKey: "inworld-key",
+          voiceId: "Dennis",
+          modelId: "inworld-tts-1.5-max",
+        },
+        ...(params?.includeOpenAIFallback
+          ? {
+              openai: {
+                apiKey: "openai-key",
+                model: "gpt-4o-mini-tts",
+                voice: "alloy",
+              },
+            }
+          : {}),
+      },
+    },
+  };
+}
+
 describe("tts", () => {
   beforeEach(async () => {
     ({ completeSimple } = await import("@mariozechner/pi-ai"));
     const registry = createEmptyPluginRegistry();
+    registry.channels = ["discord", "feishu", "matrix", "telegram", "whatsapp"].map((id) => ({
+      pluginId: id,
+      source: "test",
+      plugin: {
+        id,
+        meta: { aliases: [] },
+      } as never,
+    }));
     registry.speechProviders = [
       { pluginId: "openai", provider: buildOpenAISpeechProvider(), source: "test" },
       { pluginId: "microsoft", provider: buildMicrosoftSpeechProvider(), source: "test" },
       { pluginId: "elevenlabs", provider: buildElevenLabsSpeechProvider(), source: "test" },
+      { pluginId: "inworld", provider: buildInWorldSpeechProvider(), source: "test" },
     ];
     setActivePluginRegistry(registry, "tts-test");
     vi.clearAllMocks();
@@ -344,6 +379,18 @@ describe("tts", () => {
       const result = parseTtsDirectives(input, policy);
 
       expect(result.overrides.provider).toBe("edge");
+    });
+
+    it("accepts inworld provider and InWorld-specific override keys", () => {
+      const policy = resolveModelOverridePolicy({ enabled: true, allowProvider: true });
+      const input =
+        "Hello [[tts:provider=inworld inworld_voice=Ashley inworld_model=inworld-tts-1.5-mini]] world";
+      const result = parseTtsDirectives(input, policy);
+
+      expect(result.overrides.provider).toBe("inworld");
+      expect(result.overrides.inworld?.voiceId).toBe("Ashley");
+      expect(result.overrides.inworld?.modelId).toBe("inworld-tts-1.5-mini");
+      expect(result.warnings).toHaveLength(0);
     });
 
     it("rejects provider override by default while keeping voice overrides enabled", () => {
@@ -609,6 +656,7 @@ describe("tts", () => {
             OPENAI_API_KEY: undefined,
             ELEVENLABS_API_KEY: "test-elevenlabs-key",
             XI_API_KEY: undefined,
+            INWORLD_API_KEY: undefined,
           },
           prefsPath: "/tmp/tts-prefs-elevenlabs.json",
           expected: "elevenlabs",
@@ -618,6 +666,17 @@ describe("tts", () => {
             OPENAI_API_KEY: undefined,
             ELEVENLABS_API_KEY: undefined,
             XI_API_KEY: undefined,
+            INWORLD_API_KEY: "test-inworld-key",
+          },
+          prefsPath: "/tmp/tts-prefs-inworld.json",
+          expected: "inworld",
+        },
+        {
+          env: {
+            OPENAI_API_KEY: undefined,
+            ELEVENLABS_API_KEY: undefined,
+            XI_API_KEY: undefined,
+            INWORLD_API_KEY: undefined,
           },
           prefsPath: "/tmp/tts-prefs-microsoft.json",
           expected: "microsoft",
@@ -752,6 +811,124 @@ describe("tts", () => {
         { model: "gpt-4o-mini-tts", expectedInstructions: "Speak warmly" },
       ] as const) {
         await expectTelephonyInstructions(testCase.model, testCase.expectedInstructions);
+      }
+    });
+  });
+
+  describe("textToSpeech – inworld", () => {
+    const withMockedFetch = async (
+      impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<unknown>,
+      run: (fetchMock: ReturnType<typeof vi.fn>) => Promise<void>,
+    ) => {
+      const originalFetch = globalThis.fetch;
+      const fetchMock = vi.fn(impl);
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      try {
+        await run(fetchMock);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    };
+
+    it("keeps InWorld on MP3 even for Telegram channels", async () => {
+      await withMockedFetch(
+        async () => ({
+          ok: true,
+          json: async () => ({ audioContent: Buffer.from("inworld-mp3").toString("base64") }),
+        }),
+        async (fetchMock) => {
+          const result = await tts.textToSpeech({
+            text: "Hello from InWorld",
+            cfg: createInworldCfg(),
+            channel: "telegram",
+          });
+
+          expect(result.success).toBe(true);
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+
+          const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+          expect(typeof init.body).toBe("string");
+          const body = JSON.parse(init.body as string) as Record<string, unknown>;
+          expect(body).toMatchObject({
+            text: "Hello from InWorld",
+            voiceId: "Dennis",
+            modelId: "inworld-tts-1.5-max",
+            audioConfig: {
+              audioEncoding: "MP3",
+              sampleRateHertz: 44100,
+              bitRate: 128000,
+            },
+          });
+          expect(result.provider).toBe("inworld");
+          expect(result.outputFormat).toBe("mp3");
+          expect(result.voiceCompatible).toBe(false);
+        },
+      );
+    });
+
+    it("preserves Telegram opus fallback when an InWorld attempt fails", async () => {
+      await withMockedFetch(
+        async (_input, init) => {
+          const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+          if ("voiceId" in body) {
+            return {
+              ok: false,
+              status: 500,
+              text: async () => "inworld failed",
+            };
+          }
+          return {
+            ok: true,
+            arrayBuffer: async () => new ArrayBuffer(4),
+          };
+        },
+        async (fetchMock) => {
+          const result = await tts.textToSpeech({
+            text: "Fallback me",
+            cfg: createInworldCfg({ includeOpenAIFallback: true }),
+            channel: "telegram",
+          });
+
+          expect(result.success).toBe(true);
+          expect(fetchMock).toHaveBeenCalledTimes(2);
+
+          const [, openAiInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+          expect(typeof openAiInit.body).toBe("string");
+          const openAiBody = JSON.parse(openAiInit.body as string) as Record<string, unknown>;
+          expect(openAiBody.response_format).toBe("opus");
+          expect(result.provider).toBe("openai");
+          expect(result.outputFormat).toBe("opus");
+          expect(result.voiceCompatible).toBe(true);
+        },
+      );
+    });
+  });
+
+  describe("textToSpeechTelephony – inworld", () => {
+    it("falls back to OpenAI because InWorld is unsupported for telephony", async () => {
+      const originalFetch = globalThis.fetch;
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(4),
+      }));
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      try {
+        const result = await tts.textToSpeechTelephony({
+          text: "Telephony check",
+          cfg: createInworldCfg({ includeOpenAIFallback: true }),
+        });
+
+        expect(result.success).toBe(true);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+        expect(typeof init.body).toBe("string");
+        const body = JSON.parse(init.body as string) as Record<string, unknown>;
+        expect(body.response_format).toBe("pcm");
+        expect(result.provider).toBe("openai");
+        expect(result.outputFormat).toBe("pcm");
+      } finally {
+        globalThis.fetch = originalFetch;
       }
     });
   });

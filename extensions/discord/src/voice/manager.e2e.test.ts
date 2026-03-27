@@ -9,6 +9,7 @@ const {
   resolveAgentRouteMock,
   agentCommandMock,
   transcribeAudioFileMock,
+  textToSpeechMock,
 } = vi.hoisted(() => {
   type EventHandler = (...args: unknown[]) => unknown;
   type MockConnection = {
@@ -66,6 +67,12 @@ const {
     resolveAgentRouteMock: vi.fn(() => ({ agentId: "agent-1", sessionKey: "discord:g1:c1" })),
     agentCommandMock: vi.fn(async (_opts?: unknown, _runtime?: unknown) => ({ payloads: [] })),
     transcribeAudioFileMock: vi.fn(async () => ({ text: "hello from voice" })),
+    textToSpeechMock: vi.fn(async (_params?: unknown) => ({
+      success: true,
+      audioPath: "/tmp/test.mp3",
+      voiceCompatible: false,
+      provider: "inworld",
+    })),
   };
 });
 
@@ -106,6 +113,14 @@ vi.mock("openclaw/plugin-sdk/agent-runtime", async (importOriginal) => {
 vi.mock("openclaw/plugin-sdk/media-understanding-runtime", () => ({
   transcribeAudioFile: transcribeAudioFileMock,
 }));
+
+vi.mock("openclaw/plugin-sdk/speech-runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("openclaw/plugin-sdk/speech-runtime")>();
+  return {
+    ...actual,
+    textToSpeech: (params: unknown) => textToSpeechMock(params),
+  };
+});
 
 let managerModule: typeof import("./manager.js");
 
@@ -148,6 +163,13 @@ describe("DiscordVoiceManager", () => {
     agentCommandMock.mockResolvedValue({ payloads: [] });
     transcribeAudioFileMock.mockReset();
     transcribeAudioFileMock.mockResolvedValue({ text: "hello from voice" });
+    textToSpeechMock.mockClear();
+    textToSpeechMock.mockResolvedValue({
+      success: true,
+      audioPath: "/tmp/test.mp3",
+      voiceCompatible: false,
+      provider: "inworld",
+    });
   });
 
   const createManager = (
@@ -207,6 +229,8 @@ describe("DiscordVoiceManager", () => {
         guildId: "g1",
         channelId: "c1",
         route: { sessionKey: "discord:g1:c1", agentId: "agent-1" },
+        playbackQueue: Promise.resolve(),
+        player: createAudioPlayerMock(),
       },
       wavPath: "/tmp/test.wav",
       userId,
@@ -358,5 +382,43 @@ describe("DiscordVoiceManager", () => {
     await runSegment();
 
     expect(client.fetchMember).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies Discord voice.tts InWorld overrides to synthesized playback", async () => {
+    agentCommandMock.mockResolvedValue({
+      payloads: [{ text: "Voice reply" }],
+    });
+
+    const manager = createManager({
+      voice: {
+        enabled: true,
+        tts: {
+          provider: "inworld",
+          inworld: {
+            voiceId: "Sarah",
+            modelId: "inworld-tts-1.5-max",
+          },
+        },
+      },
+    });
+
+    await processVoiceSegment(manager, "u-guest");
+
+    const call = textToSpeechMock.mock.calls.at(-1)?.[0] as
+      | {
+          cfg?: {
+            messages?: {
+              tts?: {
+                provider?: string;
+                inworld?: { voiceId?: string; modelId?: string };
+              };
+            };
+          };
+        }
+      | undefined;
+
+    expect(call?.cfg?.messages?.tts?.provider).toBe("inworld");
+    expect(call?.cfg?.messages?.tts?.inworld?.voiceId).toBe("Sarah");
+    expect(call?.cfg?.messages?.tts?.inworld?.modelId).toBe("inworld-tts-1.5-max");
   });
 });

@@ -1,4 +1,5 @@
 import { buildElevenLabsSpeechProvider } from "../../extensions/elevenlabs/speech-provider.js";
+import { buildInWorldSpeechProvider } from "../../extensions/inworld/speech-provider.js";
 import { buildMicrosoftSpeechProvider } from "../../extensions/microsoft/speech-provider.js";
 import { buildOpenAISpeechProvider } from "../../extensions/openai/speech-provider.js";
 import type { OpenClawConfig } from "../config/config.js";
@@ -10,6 +11,7 @@ import type { SpeechProviderId } from "./provider-types.js";
 const BUILTIN_SPEECH_PROVIDER_BUILDERS = [
   buildOpenAISpeechProvider,
   buildElevenLabsSpeechProvider,
+  buildInWorldSpeechProvider,
   buildMicrosoftSpeechProvider,
 ] as const satisfies readonly (() => SpeechProviderPlugin)[];
 

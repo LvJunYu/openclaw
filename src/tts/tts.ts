@@ -58,6 +58,9 @@ const DEFAULT_MAX_TEXT_LENGTH = 4096;
 const DEFAULT_ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 const DEFAULT_ELEVENLABS_VOICE_ID = "pMsXgVXv3BLzUgSXRplE";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_multilingual_v2";
+const DEFAULT_INWORLD_BASE_URL = "https://api.inworld.ai";
+const DEFAULT_INWORLD_VOICE_ID = "Dennis";
+const DEFAULT_INWORLD_MODEL_ID = "inworld-tts-1.5-max";
 const DEFAULT_EDGE_VOICE = "en-US-MichelleNeural";
 const DEFAULT_EDGE_LANG = "en-US";
 const DEFAULT_EDGE_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
@@ -119,6 +122,12 @@ export type ResolvedTtsConfig = {
     speed?: number;
     instructions?: string;
   };
+  inworld: {
+    apiKey?: string;
+    baseUrl: string;
+    voiceId: string;
+    modelId: string;
+  };
   edge: {
     enabled: boolean;
     voice: string;
@@ -174,6 +183,10 @@ export type TtsDirectiveOverrides = {
     applyTextNormalization?: "auto" | "on" | "off";
     languageCode?: string;
     voiceSettings?: Partial<ResolvedTtsConfig["elevenlabs"]["voiceSettings"]>;
+  };
+  inworld?: {
+    voiceId?: string;
+    modelId?: string;
   };
   microsoft?: {
     voice?: string;
@@ -325,6 +338,19 @@ export function resolveTtsConfig(cfg: OpenClawConfig): ResolvedTtsConfig {
       voice: raw.openai?.voice ?? DEFAULT_OPENAI_VOICE,
       speed: raw.openai?.speed,
       instructions: raw.openai?.instructions?.trim() || undefined,
+    },
+    inworld: {
+      apiKey: normalizeResolvedSecretInputString({
+        value: raw.inworld?.apiKey,
+        path: "messages.tts.inworld.apiKey",
+      }),
+      baseUrl: (
+        raw.inworld?.baseUrl?.trim() ||
+        process.env.INWORLD_API_BASE_URL?.trim() ||
+        DEFAULT_INWORLD_BASE_URL
+      ).replace(/\/+$/, ""),
+      voiceId: raw.inworld?.voiceId?.trim() || DEFAULT_INWORLD_VOICE_ID,
+      modelId: raw.inworld?.modelId?.trim() || DEFAULT_INWORLD_MODEL_ID,
     },
     edge: {
       enabled: rawMicrosoft.enabled ?? true,
@@ -478,6 +504,9 @@ export function getTtsProvider(config: ResolvedTtsConfig, prefsPath: string): Tt
   if (resolveTtsApiKey(config, "elevenlabs")) {
     return "elevenlabs";
   }
+  if (resolveTtsApiKey(config, "inworld")) {
+    return "inworld";
+  }
   return "microsoft";
 }
 
@@ -546,10 +575,13 @@ export function resolveTtsApiKey(
   if (normalizedProvider === "openai") {
     return config.openai.apiKey || process.env.OPENAI_API_KEY;
   }
+  if (normalizedProvider === "inworld") {
+    return config.inworld.apiKey || process.env.INWORLD_API_KEY;
+  }
   return undefined;
 }
 
-export const TTS_PROVIDERS = ["openai", "elevenlabs", "microsoft"] as const;
+export const TTS_PROVIDERS = ["openai", "elevenlabs", "inworld", "microsoft"] as const;
 
 export function resolveTtsProviderOrder(primary: TtsProvider, cfg?: OpenClawConfig): TtsProvider[] {
   const normalizedPrimary = normalizeSpeechProviderId(primary) ?? primary;
