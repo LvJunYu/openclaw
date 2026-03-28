@@ -9,6 +9,7 @@
 - This local OpenClaw repo exists to build features we actually need, but it still needs to rebase and merge cleanly onto newer upstream releases later.
 - Prefer the least-coupled solution that solves the real need, so local changes stay easier to carry forward and produce fewer upstream merge conflicts.
 - If deeper integration is truly necessary, do it, but keep that tradeoff explicit instead of defaulting to the most intertwined design.
+- For the 2026-03-28 TTS port/rebase notes, see `.agents/notes/local-fork-2026-03-28-tts-port.md` before repeating similar work in a fresh session.
 - For this fork, `local/junyu` is the local integration branch where we merge/rebase new features. When creating PRs in this fork, target `local/junyu` by default, not `main`, unless explicitly told otherwise.
 - To build `local/junyu` use Git Bash with an explicit PATH for Node/npm tools:
 
