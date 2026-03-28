@@ -2670,4 +2670,107 @@ describe("handleCommands /tts", () => {
     expect(result.shouldContinue).toBe(false);
     expect(result.reply?.text).toContain("TTS status");
   });
+
+  it("shows effective provider voice details for the current agent", async () => {
+    const prefsPath = path.join(testWorkspaceDir, "tts-agent-status.json");
+    const cfg = {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+      messages: {
+        tts: {
+          prefsPath,
+          provider: "elevenlabs",
+          elevenlabs: {
+            apiKey: "eleven-key",
+            voiceId: "global-eleven-voice",
+            modelId: "eleven_multilingual_v2",
+          },
+          inworld: {
+            apiKey: "inworld-key",
+            voiceId: "Dennis",
+            modelId: "inworld-tts-1.5-max",
+          },
+        },
+      },
+      agents: {
+        list: [
+          {
+            id: "kikyo",
+            voice: {
+              provider: "inworld",
+              inworld: {
+                voiceId: "Deborah",
+                modelId: "inworld-tts-1.5-max",
+              },
+            },
+          },
+        ],
+      },
+    } as OpenClawConfig;
+    const params = buildParams("/tts status", cfg);
+    params.agentId = "kikyo";
+    params.sessionKey = "agent:kikyo:main";
+    const result = await handleCommands(params);
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply?.text).toContain("Agent: kikyo");
+    expect(result.reply?.text).toContain("Effective provider: inworld");
+    expect(result.reply?.text).toContain("Resolved voice ID: Deborah");
+    expect(result.reply?.text).toContain("Resolved model ID: inworld-tts-1.5-max");
+  });
+
+  it("shows when the effective provider differs from the configured default", async () => {
+    const prefsPath = path.join(testWorkspaceDir, "tts-agent-provider-override.json");
+    await fs.writeFile(
+      prefsPath,
+      `${JSON.stringify({ tts: { provider: "elevenlabs" } }, null, 2)}\n`,
+      "utf-8",
+    );
+    const cfg = {
+      commands: { text: true },
+      channels: { whatsapp: { allowFrom: ["*"] } },
+      messages: {
+        tts: {
+          prefsPath,
+          provider: "openai",
+          openai: {
+            apiKey: "openai-key",
+            voice: "alloy",
+            model: "gpt-4o-mini-tts",
+          },
+          elevenlabs: {
+            apiKey: "eleven-key",
+            voiceId: "global-eleven-voice",
+            modelId: "eleven_multilingual_v2",
+          },
+          inworld: {
+            apiKey: "inworld-key",
+            voiceId: "Dennis",
+            modelId: "inworld-tts-1.5-max",
+          },
+        },
+      },
+      agents: {
+        list: [
+          {
+            id: "kikyo",
+            voice: {
+              provider: "inworld",
+              inworld: {
+                voiceId: "Deborah",
+                modelId: "inworld-tts-1.5-max",
+              },
+            },
+          },
+        ],
+      },
+    } as OpenClawConfig;
+    const params = buildParams("/tts status", cfg);
+    params.agentId = "kikyo";
+    params.sessionKey = "agent:kikyo:main";
+    const result = await handleCommands(params);
+    expect(result.shouldContinue).toBe(false);
+    expect(result.reply?.text).toContain("Effective provider: elevenlabs");
+    expect(result.reply?.text).toContain("Configured default provider: inworld");
+    expect(result.reply?.text).toContain("Resolved voice ID: global-eleven-voice");
+  });
 });

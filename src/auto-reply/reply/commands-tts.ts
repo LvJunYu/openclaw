@@ -1,3 +1,4 @@
+import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { logVerbose } from "../../globals.js";
 import { getSpeechProvider, normalizeSpeechProviderId } from "../../tts/provider-registry.js";
 import {
@@ -8,7 +9,7 @@ import {
   isTtsEnabled,
   isTtsProviderConfigured,
   resolveTtsApiKey,
-  resolveTtsConfig,
+  resolveTtsConfigForAgent,
   resolveTtsPrefsPath,
   setLastTtsAttempt,
   setSummarizationEnabled,
@@ -16,6 +17,7 @@ import {
   setTtsMaxLength,
   setTtsProvider,
   textToSpeech,
+  type ResolvedTtsConfig,
 } from "../../tts/tts.js";
 import type { ReplyPayload } from "../types.js";
 import type { CommandHandler } from "./commands-types.js";
@@ -42,7 +44,6 @@ function parseTtsCommand(normalized: string): ParsedTtsCommand | null {
 }
 
 function ttsUsage(): ReplyPayload {
-  // Keep usage in one place so help/validation stays consistent.
   return {
     text:
       `🔊 **TTS (Text-to-Speech) Help**\n\n` +
@@ -57,7 +58,8 @@ function ttsUsage(): ReplyPayload {
       `**Providers:**\n` +
       `• microsoft — Microsoft Edge-backed speech (default fallback)\n` +
       `• openai — High quality (requires API key)\n` +
-      `• elevenlabs — Premium voices (requires API key)\n\n` +
+      `• elevenlabs — Premium voices (requires API key)\n` +
+      `• inworld — InWorld AI voices (requires API key)\n\n` +
       `**Text Limit (default: 1500, max: 4096):**\n` +
       `When text exceeds the limit:\n` +
       `• Summary ON: AI summarizes, then generates audio\n` +
@@ -67,6 +69,45 @@ function ttsUsage(): ReplyPayload {
       `/tts limit 2000\n` +
       `/tts audio Hello, this is a test!`,
   };
+}
+
+function resolveCommandAgentId(params: Parameters<CommandHandler>[0]): string {
+  const explicit = params.agentId?.trim();
+  if (explicit) {
+    return explicit;
+  }
+  return resolveSessionAgentId({
+    sessionKey: params.sessionKey,
+    config: params.cfg,
+  });
+}
+
+function buildResolvedProviderLines(config: ResolvedTtsConfig, provider: string): string[] {
+  if (provider === "openai") {
+    return [
+      `Resolved voice: ${config.openai.voice}`,
+      `Resolved model: ${config.openai.model}`,
+    ];
+  }
+  if (provider === "elevenlabs") {
+    return [
+      `Resolved voice ID: ${config.elevenlabs.voiceId}`,
+      `Resolved model ID: ${config.elevenlabs.modelId}`,
+    ];
+  }
+  if (provider === "inworld") {
+    return [
+      `Resolved voice ID: ${config.inworld.voiceId}`,
+      `Resolved model ID: ${config.inworld.modelId}`,
+    ];
+  }
+  if (provider === "microsoft") {
+    return [
+      `Resolved voice: ${config.edge.voice}`,
+      `Resolved language: ${config.edge.lang}`,
+    ];
+  }
+  return [];
 }
 
 export const handleTtsCommands: CommandHandler = async (params, allowTextCommands) => {
@@ -85,7 +126,8 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
     return { shouldContinue: false };
   }
 
-  const config = resolveTtsConfig(params.cfg);
+  const resolvedAgentId = resolveCommandAgentId(params);
+  const config = resolveTtsConfigForAgent(params.cfg, resolvedAgentId);
   const prefsPath = resolveTtsPrefsPath(config);
   const action = parsed.action;
   const args = parsed.args;
@@ -123,18 +165,21 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
       cfg: params.cfg,
       channel: params.command.channel,
       prefsPath,
+      agentId: resolvedAgentId,
     });
 
     if (result.success && result.audioPath) {
-      // Store last attempt for `/tts status`.
-      setLastTtsAttempt({
-        timestamp: Date.now(),
-        success: true,
-        textLength: args.length,
-        summarized: false,
-        provider: result.provider,
-        latencyMs: result.latencyMs,
-      });
+      setLastTtsAttempt(
+        {
+          timestamp: Date.now(),
+          success: true,
+          textLength: args.length,
+          summarized: false,
+          provider: result.provider,
+          latencyMs: result.latencyMs,
+        },
+        resolvedAgentId,
+      );
       const payload: ReplyPayload = {
         mediaUrl: result.audioPath,
         audioAsVoice: result.voiceCompatible === true,
@@ -142,15 +187,17 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
       return { shouldContinue: false, reply: payload };
     }
 
-    // Store failure details for `/tts status`.
-    setLastTtsAttempt({
-      timestamp: Date.now(),
-      success: false,
-      textLength: args.length,
-      summarized: false,
-      error: result.error,
-      latencyMs: Date.now() - start,
-    });
+    setLastTtsAttempt(
+      {
+        timestamp: Date.now(),
+        success: false,
+        textLength: args.length,
+        summarized: false,
+        error: result.error,
+        latencyMs: Date.now() - start,
+      },
+      resolvedAgentId,
+    );
     return {
       shouldContinue: false,
       reply: { text: `❌ Error generating audio: ${result.error ?? "unknown error"}` },
@@ -162,6 +209,7 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
     if (!args.trim()) {
       const hasOpenAI = Boolean(resolveTtsApiKey(config, "openai"));
       const hasElevenLabs = Boolean(resolveTtsApiKey(config, "elevenlabs"));
+      const hasInworld = Boolean(resolveTtsApiKey(config, "inworld"));
       const hasMicrosoft = isTtsProviderConfigured(config, "microsoft", params.cfg);
       return {
         shouldContinue: false,
@@ -171,8 +219,9 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
             `Primary: ${currentProvider}\n` +
             `OpenAI key: ${hasOpenAI ? "✅" : "❌"}\n` +
             `ElevenLabs key: ${hasElevenLabs ? "✅" : "❌"}\n` +
+            `InWorld key: ${hasInworld ? "✅" : "❌"}\n` +
             `Microsoft enabled: ${hasMicrosoft ? "✅" : "❌"}\n` +
-            `Usage: /tts provider openai | elevenlabs | microsoft`,
+            `Usage: /tts provider openai | elevenlabs | inworld | microsoft`,
         },
       };
     }
@@ -243,7 +292,8 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
     return {
       shouldContinue: false,
       reply: {
-        text: requested === "on" ? "✅ TTS auto-summary enabled." : "❌ TTS auto-summary disabled.",
+        text:
+          requested === "on" ? "✅ TTS auto-summary enabled." : "❌ TTS auto-summary disabled.",
       },
     };
   }
@@ -254,11 +304,14 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
     const hasKey = isTtsProviderConfigured(config, provider, params.cfg);
     const maxLength = getTtsMaxLength(prefsPath);
     const summarize = isSummarizationEnabled(prefsPath);
-    const last = getLastTtsAttempt();
+    const last = getLastTtsAttempt(resolvedAgentId);
     const lines = [
       "📊 TTS status",
+      `Agent: ${resolvedAgentId}`,
       `State: ${enabled ? "✅ enabled" : "❌ disabled"}`,
-      `Provider: ${provider} (${hasKey ? "✅ configured" : "❌ not configured"})`,
+      `Effective provider: ${provider} (${hasKey ? "✅ configured" : "❌ not configured"})`,
+      ...(config.provider !== provider ? [`Configured default provider: ${config.provider}`] : []),
+      ...buildResolvedProviderLines(config, provider),
       `Text limit: ${maxLength} chars`,
       `Auto-summary: ${summarize ? "on" : "off"}`,
     ];
@@ -268,7 +321,7 @@ export const handleTtsCommands: CommandHandler = async (params, allowTextCommand
       lines.push(`Last attempt (${timeAgo}s ago): ${last.success ? "✅" : "❌"}`);
       lines.push(`Text: ${last.textLength} chars${last.summarized ? " (summarized)" : ""}`);
       if (last.success) {
-        lines.push(`Provider: ${last.provider ?? "unknown"}`);
+        lines.push(`Last provider: ${last.provider ?? "unknown"}`);
         lines.push(`Latency: ${last.latencyMs ?? 0}ms`);
       } else if (last.error) {
         lines.push(`Error: ${last.error}`);

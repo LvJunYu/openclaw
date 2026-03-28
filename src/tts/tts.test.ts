@@ -71,7 +71,8 @@ vi.mock("../agents/custom-api-registry.js", () => ({
   ensureCustomApiRegistered: vi.fn(),
 }));
 
-const { _test, resolveTtsConfig, maybeApplyTtsToPayload, getTtsProvider } = tts;
+const { _test, resolveTtsConfig, resolveTtsConfigForAgent, maybeApplyTtsToPayload, getTtsProvider } =
+  tts;
 
 const {
   isValidVoiceId,
@@ -709,6 +710,61 @@ describe("tts", () => {
 
       expect(config.provider).toBe("microsoft");
       expect(getTtsProvider(config, "/tmp/tts-prefs-normalized.json")).toBe("microsoft");
+    });
+  });
+
+  describe("resolveTtsConfigForAgent", () => {
+    it("layers per-agent voice defaults over the global TTS config", () => {
+      const cfg: OpenClawConfig = {
+        agents: {
+          defaults: { model: { primary: "openai/gpt-4o-mini" } },
+          list: [
+            {
+              id: "storyteller",
+              voice: {
+                provider: "inworld",
+                auto: "always",
+                mode: "all",
+                inworld: {
+                  voiceId: "Deborah",
+                  modelId: "inworld-tts-1.5-max",
+                },
+                openai: {
+                  voice: "ash",
+                },
+              },
+            },
+          ],
+        },
+        messages: {
+          tts: {
+            auto: "tagged",
+            mode: "final",
+            provider: "openai",
+            openai: {
+              apiKey: "openai-key",
+              voice: "alloy",
+              model: "gpt-4o-mini-tts",
+            },
+            inworld: {
+              apiKey: "inworld-key",
+              voiceId: "Dennis",
+              modelId: "inworld-tts-1.5-mini",
+            },
+          },
+        },
+      };
+
+      const resolved = resolveTtsConfigForAgent(cfg, "storyteller");
+
+      expect(resolved.auto).toBe("always");
+      expect(resolved.mode).toBe("all");
+      expect(resolved.provider).toBe("inworld");
+      expect(resolved.openai.voice).toBe("ash");
+      expect(resolved.openai.model).toBe("gpt-4o-mini-tts");
+      expect(resolved.inworld.voiceId).toBe("Deborah");
+      expect(resolved.inworld.modelId).toBe("inworld-tts-1.5-max");
+      expect(resolved.inworld.apiKey).toBe("inworld-key");
     });
   });
 

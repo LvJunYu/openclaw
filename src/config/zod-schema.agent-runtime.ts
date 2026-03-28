@@ -3,6 +3,7 @@ import { getBlockedNetworkModeReason } from "../agents/sandbox/network-mode.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { AgentModelSchema } from "./zod-schema.agent-model.js";
 import {
+  AgentVoiceConfigSchema,
   GroupChatSchema,
   HumanDelaySchema,
   IdentitySchema,
@@ -779,6 +780,7 @@ export const AgentEntrySchema = z
     heartbeat: HeartbeatSchema,
     identity: IdentitySchema,
     groupChat: GroupChatSchema,
+    voice: AgentVoiceConfigSchema,
     subagents: z
       .object({
         allowAgents: z.array(z.string()).optional(),

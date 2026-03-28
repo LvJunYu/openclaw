@@ -3997,6 +3997,100 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                   },
                   additionalProperties: false,
                 },
+                voice: {
+                  type: "object",
+                  properties: {
+                    provider: {
+                      type: "string",
+                      minLength: 1,
+                    },
+                    auto: {
+                      type: "string",
+                      enum: ["off", "always", "inbound", "tagged"],
+                    },
+                    enabled: {
+                      type: "boolean",
+                    },
+                    mode: {
+                      type: "string",
+                      enum: ["final", "all"],
+                    },
+                    openai: {
+                      type: "object",
+                      properties: {
+                        voice: {
+                          type: "string",
+                        },
+                        model: {
+                          type: "string",
+                        },
+                        speed: {
+                          type: "number",
+                          minimum: 0.25,
+                          maximum: 4,
+                        },
+                        instructions: {
+                          type: "string",
+                        },
+                      },
+                      additionalProperties: false,
+                    },
+                    elevenlabs: {
+                      type: "object",
+                      properties: {
+                        voiceId: {
+                          type: "string",
+                        },
+                        modelId: {
+                          type: "string",
+                        },
+                        speed: {
+                          type: "number",
+                          minimum: 0.5,
+                          maximum: 2,
+                        },
+                      },
+                      additionalProperties: false,
+                    },
+                    inworld: {
+                      type: "object",
+                      properties: {
+                        voiceId: {
+                          type: "string",
+                        },
+                        modelId: {
+                          type: "string",
+                        },
+                      },
+                      additionalProperties: false,
+                    },
+                    edge: {
+                      type: "object",
+                      properties: {
+                        voice: {
+                          type: "string",
+                        },
+                        lang: {
+                          type: "string",
+                        },
+                      },
+                      additionalProperties: false,
+                    },
+                    microsoft: {
+                      type: "object",
+                      properties: {
+                        voice: {
+                          type: "string",
+                        },
+                        lang: {
+                          type: "string",
+                        },
+                      },
+                      additionalProperties: false,
+                    },
+                  },
+                  additionalProperties: false,
+                },
                 subagents: {
                   type: "object",
                   properties: {
@@ -8396,6 +8490,87 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
                     maximum: 4,
                   },
                   instructions: {
+                    type: "string",
+                  },
+                },
+                additionalProperties: false,
+              },
+              inworld: {
+                type: "object",
+                properties: {
+                  apiKey: {
+                    anyOf: [
+                      {
+                        type: "string",
+                      },
+                      {
+                        oneOf: [
+                          {
+                            type: "object",
+                            properties: {
+                              source: {
+                                type: "string",
+                                const: "env",
+                              },
+                              provider: {
+                                type: "string",
+                                pattern: "^[a-z][a-z0-9_-]{0,63}$",
+                              },
+                              id: {
+                                type: "string",
+                                pattern: "^[A-Z][A-Z0-9_]{0,127}$",
+                              },
+                            },
+                            required: ["source", "provider", "id"],
+                            additionalProperties: false,
+                          },
+                          {
+                            type: "object",
+                            properties: {
+                              source: {
+                                type: "string",
+                                const: "file",
+                              },
+                              provider: {
+                                type: "string",
+                                pattern: "^[a-z][a-z0-9_-]{0,63}$",
+                              },
+                              id: {
+                                type: "string",
+                              },
+                            },
+                            required: ["source", "provider", "id"],
+                            additionalProperties: false,
+                          },
+                          {
+                            type: "object",
+                            properties: {
+                              source: {
+                                type: "string",
+                                const: "exec",
+                              },
+                              provider: {
+                                type: "string",
+                                pattern: "^[a-z][a-z0-9_-]{0,63}$",
+                              },
+                              id: {
+                                type: "string",
+                              },
+                            },
+                            required: ["source", "provider", "id"],
+                            additionalProperties: false,
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  baseUrl: {
+                    type: "string",
+                  },
+                  voiceId: {
+                    type: "string",
+                  },
+                  modelId: {
                     type: "string",
                   },
                 },
@@ -16188,6 +16363,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       sensitive: true,
       tags: ["security", "auth", "media"],
     },
+    "messages.tts.inworld.apiKey": {
+      sensitive: true,
+      tags: ["security", "auth", "media"],
+    },
     "channels.telegram.webhookSecret": {
       sensitive: true,
       tags: ["security", "auth", "network", "channels"],
@@ -16208,6 +16387,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       sensitive: true,
       tags: ["security", "auth", "network", "media", "channels"],
     },
+    "channels.discord.voice.tts.inworld.apiKey": {
+      sensitive: true,
+      tags: ["security", "auth", "network", "media", "channels"],
+    },
     "channels.discord.accounts.*.token": {
       sensitive: true,
       tags: ["security", "auth", "network", "channels"],
@@ -16217,6 +16400,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA = {
       tags: ["security", "auth", "network", "media", "channels"],
     },
     "channels.discord.accounts.*.voice.tts.openai.apiKey": {
+      sensitive: true,
+      tags: ["security", "auth", "network", "media", "channels"],
+    },
+    "channels.discord.accounts.*.voice.tts.inworld.apiKey": {
       sensitive: true,
       tags: ["security", "auth", "network", "media", "channels"],
     },

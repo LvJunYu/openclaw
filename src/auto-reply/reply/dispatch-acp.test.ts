@@ -74,6 +74,7 @@ vi.mock("../../infra/outbound/message-action-runner.js", () => ({
 vi.mock("../../tts/tts.js", () => ({
   maybeApplyTtsToPayload: (params: unknown) => ttsMocks.maybeApplyTtsToPayload(params),
   resolveTtsConfig: (cfg: OpenClawConfig) => ttsMocks.resolveTtsConfig(cfg),
+  resolveTtsConfigForAgent: (cfg: OpenClawConfig) => ttsMocks.resolveTtsConfig(cfg),
 }));
 
 vi.mock("../../acp/runtime/session-meta.js", () => ({

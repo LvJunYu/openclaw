@@ -98,6 +98,10 @@ export function createOpenClawTools(
   } & SpawnedToolContext,
 ): AnyAgentTool[] {
   const resolvedConfig = options?.config ?? openClawToolsDeps.config;
+  const resolvedAgentId = resolveSessionAgentId({
+    sessionKey: options?.agentSessionKey,
+    config: resolvedConfig,
+  });
   const workspaceDir = resolveWorkspaceRoot(options?.workspaceDir);
   const spawnWorkspaceDir = resolveWorkspaceRoot(
     options?.spawnWorkspaceDir ?? options?.workspaceDir,
@@ -183,6 +187,7 @@ export function createOpenClawTools(
     ...(messageTool ? [messageTool] : []),
     createTtsTool({
       agentChannel: options?.agentChannel,
+      agentId: resolvedAgentId,
       config: options?.config,
     }),
     ...(imageGenerateTool ? [imageGenerateTool] : []),
@@ -249,10 +254,7 @@ export function createOpenClawTools(
       config: options?.config,
       workspaceDir,
       agentDir: options?.agentDir,
-      agentId: resolveSessionAgentId({
-        sessionKey: options?.agentSessionKey,
-        config: options?.config,
-      }),
+      agentId: resolvedAgentId,
       sessionKey: options?.agentSessionKey,
       sessionId: options?.sessionId,
       messageChannel: options?.agentChannel,

@@ -378,6 +378,48 @@ export const MarkdownConfigSchema = z
 export const TtsProviderSchema = z.string().min(1);
 export const TtsModeSchema = z.enum(["final", "all"]);
 export const TtsAutoSchema = z.enum(["off", "always", "inbound", "tagged"]);
+const AgentMicrosoftVoiceConfigSchema = z
+  .object({
+    voice: z.string().optional(),
+    lang: z.string().optional(),
+  })
+  .strict()
+  .optional();
+export const AgentVoiceConfigSchema = z
+  .object({
+    provider: TtsProviderSchema.optional(),
+    auto: TtsAutoSchema.optional(),
+    enabled: z.boolean().optional(),
+    mode: TtsModeSchema.optional(),
+    openai: z
+      .object({
+        voice: z.string().optional(),
+        model: z.string().optional(),
+        speed: z.number().min(0.25).max(4).optional(),
+        instructions: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    elevenlabs: z
+      .object({
+        voiceId: z.string().optional(),
+        modelId: z.string().optional(),
+        speed: z.number().min(0.5).max(2).optional(),
+      })
+      .strict()
+      .optional(),
+    inworld: z
+      .object({
+        voiceId: z.string().optional(),
+        modelId: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+    edge: AgentMicrosoftVoiceConfigSchema,
+    microsoft: AgentMicrosoftVoiceConfigSchema,
+  })
+  .strict()
+  .optional();
 const TtsMicrosoftConfigSchema = z
   .object({
     enabled: z.boolean().optional(),

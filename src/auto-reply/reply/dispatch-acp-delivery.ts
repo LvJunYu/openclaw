@@ -53,6 +53,7 @@ export function createAcpDispatchDeliveryCoordinator(params: {
   inboundAudio: boolean;
   sessionTtsAuto?: TtsAutoMode;
   ttsChannel?: string;
+  agentId?: string;
   shouldRouteToOriginating: boolean;
   originatingChannel?: string;
   originatingTo?: string;
@@ -145,6 +146,7 @@ export function createAcpDispatchDeliveryCoordinator(params: {
           kind,
           inboundAudio: params.inboundAudio,
           ttsAuto: params.sessionTtsAuto,
+          agentId: params.agentId,
         });
 
     if (params.shouldRouteToOriginating && params.originatingChannel && params.originatingTo) {

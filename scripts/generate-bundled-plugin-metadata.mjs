@@ -9,6 +9,7 @@ const MANIFEST_KEY = "openclaw";
 const FORMATTER_CWD = path.resolve(import.meta.dirname, "..");
 const CANONICAL_PACKAGE_ID_ALIASES = {
   "elevenlabs-speech": "elevenlabs",
+  "inworld-speech": "inworld",
   "microsoft-speech": "microsoft",
   "ollama-provider": "ollama",
   "sglang-provider": "sglang",

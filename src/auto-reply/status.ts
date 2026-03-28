@@ -33,7 +33,7 @@ import {
   getTtsProvider,
   isSummarizationEnabled,
   resolveTtsAutoMode,
-  resolveTtsConfig,
+  resolveTtsConfigForAgent,
   resolveTtsPrefsPath,
 } from "../tts/tts.js";
 import {
@@ -394,11 +394,12 @@ const formatMediaUnderstandingLine = (decisions?: ReadonlyArray<MediaUnderstandi
 const formatVoiceModeLine = (
   config?: OpenClawConfig,
   sessionEntry?: SessionEntry,
+  agentId?: string,
 ): string | null => {
   if (!config) {
     return null;
   }
-  const ttsConfig = resolveTtsConfig(config);
+  const ttsConfig = resolveTtsConfigForAgent(config, agentId);
   const prefsPath = resolveTtsPrefsPath(ttsConfig);
   const autoMode = resolveTtsAutoMode({
     config: ttsConfig,
@@ -783,7 +784,7 @@ export function buildStatusMessage(args: StatusArgs): string {
   const usageCostLine =
     usagePair && costLine ? `${usagePair} · ${costLine}` : (usagePair ?? costLine);
   const mediaLine = formatMediaUnderstandingLine(args.mediaDecisions);
-  const voiceLine = formatVoiceModeLine(args.config, args.sessionEntry);
+  const voiceLine = formatVoiceModeLine(args.config, args.sessionEntry, args.agentId);
 
   return [
     versionLine,
